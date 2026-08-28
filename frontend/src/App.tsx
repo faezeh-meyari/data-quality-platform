@@ -1,19 +1,21 @@
 import { useEffect, useState } from "react";
-
-type Dataset = {
-  id: number;
-  name: string;
-  status: string;
-};
+import { createDataset, getDatasets } from "./services/datasetApi";
+import type { Dataset } from "./types/dataset";
+import DatasetList from "./components/DatasetList";
+import AddDatasetForm from "./components/AddDatasetForm";
+import BackendStatus from "./components/BackendStatus";
+import { getBackendStatus } from "./services/healthApi";
 
 function App() {
   const [backendStatus, setBackendStatus] = useState("checking...");
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [newDatasetName, setNewDatasetName] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
+  const [isAddingDataset, setIsAddingDataset] = useState(false);
+  const [isLoadingDatasets, setIsLoadingDatasets] = useState(true);
 
   useEffect(() => {
-    fetch("http://localhost:3000/health")
-      .then((response) => response.json())
+    getBackendStatus()
       .then((data) => {
         setBackendStatus(data.status);
       })
@@ -24,11 +26,15 @@ function App() {
   }, []);
 
   useEffect(() => {
-    fetch("http://localhost:3000/api/datasets")
-      .then((response) => response.json())
-      .then((data) => setDatasets(data))
+    getDatasets()
+      .then((data) => {
+        setDatasets(data);
+      })
       .catch((error) => {
         console.error("Failed to load datasets:", error);
+      })
+      .finally(() => {
+        setIsLoadingDatasets(false);
       });
   }, []);
 
@@ -36,23 +42,10 @@ function App() {
     if (!newDatasetName.trim()) {
       return;
     }
+    setErrorMessage("");
+    setIsAddingDataset(true);
 
-    fetch("http://localhost:3000/api/datasets", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        name: newDatasetName,
-      }),
-    })
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error("Failed to create dataset");
-        }
-
-        return response.json();
-      })
+    createDataset(newDatasetName)
       .then((newDataset: Dataset) => {
         setDatasets((currentDatasets) => [...currentDatasets, newDataset]);
 
@@ -60,6 +53,10 @@ function App() {
       })
       .catch((error) => {
         console.error("Failed to create dataset:", error);
+        setErrorMessage("Failed to create dataset. Please try again.");
+      })
+      .finally(() => {
+        setIsAddingDataset(false);
       });
   }
 
@@ -67,28 +64,16 @@ function App() {
     <div>
       <h1>Data Quality Platform</h1>
 
-      <p>Backend status: {backendStatus}</p>
-      <div>
-        <input
-          type="text"
-          placeholder="Dataset name"
-          value={newDatasetName}
-          onChange={(event) => {
-            setNewDatasetName(event.target.value);
-          }}
-        />
+      <BackendStatus status={backendStatus} />
+      <AddDatasetForm
+        newDatasetName={newDatasetName}
+        onNameChange={setNewDatasetName}
+        onAddDataset={handleAddDataset}
+        isLoading={isAddingDataset}
+      />
+      {errorMessage && <p>{errorMessage}</p>}
 
-        <button onClick={handleAddDataset}>Add Dataset</button>
-      </div>
-
-      <h2>Datasets</h2>
-      <ul>
-        {datasets.map((dataset) => (
-          <li key={dataset.id}>
-            {dataset.name} - {dataset.status}
-          </li>
-        ))}
-      </ul>
+      <DatasetList datasets={datasets} isLoading={isLoadingDatasets} />
     </div>
   );
 }
